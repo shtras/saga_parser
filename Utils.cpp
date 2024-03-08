@@ -45,8 +45,8 @@ bool Config::Load(const std::string& fileName)
     }
 
     nlohmann::json json = nlohmann::json::parse(f);
-    if (json.contains("console")) {
-        UseConsole = json["console"];
+    if (json.contains("use_console")) {
+        UseConsole = json["use_console"];
     }
 
     if (json.contains("log_level")) {

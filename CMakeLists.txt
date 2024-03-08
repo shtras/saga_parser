@@ -17,8 +17,7 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(nlohmann_json 3.2.0 REQUIRED)
 find_package(wxWidgets CONFIG REQUIRED)
 
-add_executable (saga_parser main.cpp Parser.cpp Utils.cpp)
+add_executable (saga_parser WIN32 main.cpp Parser.cpp Utils.cpp saga_parser.rc)
 target_link_libraries(saga_parser PUBLIC saga_parser_compiler_flags spdlog::spdlog nlohmann_json::nlohmann_json wx::core wx::base)
-
 
 file(COPY config.json DESTINATION .)

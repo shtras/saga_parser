@@ -79,21 +79,48 @@ struct Date
 } // namespace
 
 namespace fs = std::filesystem;
-Parser::Parser(Stats& stats)
-    : stats_(stats)
-{
-}
 
-void Parser::Parse(const std::filesystem::path& path)
+void Parser::ParseFile(const std::filesystem::path& path)
 {
+    if (!fs::exists(path)) {
+        spdlog::error("File not found");
+        stats_.errors.push_back(path.string());
+        return;
+    }
+    if (path.extension() != ".sp") {
+        stats_.errors.push_back(path.string());
+        return;
+    }
     std::ifstream f(path, std::ios_base::in | std::ios_base::binary);
     auto fileSize = fs::file_size(path);
     spdlog::trace("Size: {}", fileSize);
 
     std::vector<char> data(fileSize);
     f.read(data.data(), fileSize);
-    processFileData(data);
+    std::string fileName;
+    try {
+        fileName = path.filename().string();
+    } catch (std::system_error& e) {
+        
+    }
+    try {
+        processFileData(data, fileName);
+    } catch (std::runtime_error& e) {
+        spdlog::error("Failed: {}", e.what());
+        stats_.errors.push_back(path.string());
+        return;
+    }
     spdlog::info("Success");
+}
+
+void Parser::ParseDir(const std::filesystem::path& path)
+{
+    fs::path dir(path);
+    fs::directory_iterator itr(dir);
+    for (auto& e : itr) {
+        auto& subPath = e.path();
+        ParseFile(subPath);
+    }
 }
 
 const Stats& Parser::GetStats() const
@@ -101,9 +128,8 @@ const Stats& Parser::GetStats() const
     return stats_;
 }
 
-void Parser::processFileData(const std::vector<char>& v)
+void Parser::processFileData(const std::vector<char>& v, const std::string& setName)
 {
-    int crosses = 0;
     Data data(v);
     Header header(data);
     data.skip(header.sizeExtra + 14);
@@ -144,11 +170,11 @@ void Parser::processFileData(const std::vector<char>& v)
     for (int i = 0; i < numDates; ++i) {
         Date date(data);
         spdlog::debug("{}", date.toString());
-        auto& year = stats_.years[static_cast<int>(date.date.year())];
-        year.months[static_cast<unsigned int>(date.date.month())] += date.numCrosses;
-        crosses += date.numCrosses;
+        auto year = static_cast<int>(date.date.year());
+        auto month = static_cast<unsigned int>(date.date.month());
+        auto numStitches = date.numCrosses;
+        stats_.Add(year, month, numStitches, setName);
     }
-    spdlog::info("Crosses: {}", crosses);
 }
 
 void Parser::processFileLegacy(const std::vector<char>& v)
@@ -209,7 +235,7 @@ void Parser::processFileLegacy(const std::vector<char>& v)
     }
 
     const char* payloadPtr = dataPtr + h->payloadOffset;
-    spdlog::info("Gap: {}", (int)payloadPtr - (int)threadsPtr);
+    spdlog::info("Gap: {}", (long long)payloadPtr - (long long)threadsPtr);
     int numCrosses = *(int*)(payloadPtr + 0xc);
 
     /*

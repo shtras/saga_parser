@@ -72,12 +72,40 @@ private:
 
 struct Stats
 {
+    struct StatPeriod
+    {
+        int numStitches = 0;
+        std::map<std::string, int> sets;
+    };
+    struct Month
+    {
+        StatPeriod stat;
+    };
     struct Year
     {
-        int year = 0;
-        std::map<int, int> months;
+        std::map<int, Month> months;
+        StatPeriod stat;
     };
+
+    void Add(int year, int month, int numStitches, const std::string setName)
+    {
+        if (numStitches == 0) {
+            return;
+        }
+        stat.numStitches += numStitches;
+        years[year].stat.numStitches += numStitches;
+        years[year].months[month].stat.numStitches += numStitches;
+
+        if (!setName.empty()) {
+            stat.sets[setName] += numStitches;
+            years[year].stat.sets[setName] += numStitches;
+            years[year].months[month].stat.sets[setName] += numStitches;
+        }
+    }
+
     std::map<int, Year> years;
+    StatPeriod stat;
+    std::vector<std::string> errors;
 };
 
 struct Config
