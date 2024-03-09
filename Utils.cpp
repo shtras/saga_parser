@@ -37,6 +37,16 @@ void Data::ensureEnough(size_t n)
         throw std::runtime_error("Out of bounds");
     }
 }
+
+void Config::Save(const std::string& fileName)
+{
+    nlohmann::json json;
+    json["log_level"] = fmt::to_string(spdlog::level::to_string_view(LogLevel));
+    json["use_console"] = UseConsole;
+    std::ofstream f("config.json");
+    f << json;
+}
+
 bool Config::Load(const std::string& fileName)
 {
     std::ifstream f("config.json");

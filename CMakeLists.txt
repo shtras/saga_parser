@@ -16,8 +16,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 find_package(spdlog CONFIG REQUIRED)
 find_package(nlohmann_json 3.2.0 REQUIRED)
 find_package(wxWidgets CONFIG REQUIRED)
+find_package(fmt CONFIG REQUIRED)
 
 add_executable (saga_parser WIN32 main.cpp Parser.cpp Utils.cpp saga_parser.rc)
 target_link_libraries(saga_parser PUBLIC saga_parser_compiler_flags spdlog::spdlog nlohmann_json::nlohmann_json wx::core wx::base)
 
 file(COPY config.json DESTINATION .)
+
+install(TARGETS saga_parser RUNTIME_DEPENDENCIES RUNTIME DESTINATION bin)
+

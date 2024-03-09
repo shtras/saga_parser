@@ -84,11 +84,11 @@ void Parser::ParseFile(const std::filesystem::path& path)
 {
     if (!fs::exists(path)) {
         spdlog::error("File not found");
-        stats_.errors.push_back(path.string());
+        stats_.errors.push_back(path.wstring());
         return;
     }
     if (path.extension() != ".sp") {
-        stats_.errors.push_back(path.string());
+        stats_.errors.push_back(path.wstring());
         return;
     }
     std::ifstream f(path, std::ios_base::in | std::ios_base::binary);
@@ -97,9 +97,9 @@ void Parser::ParseFile(const std::filesystem::path& path)
 
     std::vector<char> data(fileSize);
     f.read(data.data(), fileSize);
-    std::string fileName;
+    std::wstring fileName;
     try {
-        fileName = path.filename().string();
+        fileName = path.filename().wstring();
     } catch (std::system_error& e) {
         
     }
@@ -107,10 +107,10 @@ void Parser::ParseFile(const std::filesystem::path& path)
         processFileData(data, fileName);
     } catch (std::runtime_error& e) {
         spdlog::error("Failed: {}", e.what());
-        stats_.errors.push_back(path.string());
+        stats_.errors.push_back(path.wstring());
         return;
     }
-    spdlog::info("Success");
+    spdlog::debug("Success");
 }
 
 void Parser::ParseDir(const std::filesystem::path& path)
@@ -128,7 +128,7 @@ const Stats& Parser::GetStats() const
     return stats_;
 }
 
-void Parser::processFileData(const std::vector<char>& v, const std::string& setName)
+void Parser::processFileData(const std::vector<char>& v, const std::wstring& setName)
 {
     Data data(v);
     Header header(data);

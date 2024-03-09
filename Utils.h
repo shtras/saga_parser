@@ -75,7 +75,7 @@ struct Stats
     struct StatPeriod
     {
         int numStitches = 0;
-        std::map<std::string, int> sets;
+        std::map<std::wstring, int> sets;
     };
     struct Month
     {
@@ -87,7 +87,7 @@ struct Stats
         StatPeriod stat;
     };
 
-    void Add(int year, int month, int numStitches, const std::string setName)
+    void Add(int year, int month, int numStitches, const std::wstring& setName)
     {
         if (numStitches == 0) {
             return;
@@ -105,12 +105,13 @@ struct Stats
 
     std::map<int, Year> years;
     StatPeriod stat;
-    std::vector<std::string> errors;
+    std::vector<std::wstring> errors;
 };
 
 struct Config
 {
     bool Load(const std::string& fileName);
+    void Save(const std::string& fileName);
     bool UseConsole = false;
     spdlog::level::level_enum LogLevel{spdlog::level::info};
 };

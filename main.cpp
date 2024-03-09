@@ -2,6 +2,7 @@
 #include "Parser.h"
 
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/callback_sink.h>
 #include <nlohmann/json.hpp>
 #include <wx/wx.h>
 #include <wx/treectrl.h>
@@ -12,6 +13,18 @@
 namespace fs = std::filesystem;
 namespace SagaStats
 {
+void createConsole()
+{
+    AllocConsole();
+    FILE* stream = nullptr;
+    _wfreopen_s(&stream, L"CON", L"w", stdout);
+}
+
+void destroyConsole()
+{
+    FreeConsole();
+}
+
 void scanDir(const std::string& pathStr)
 {
     Parser parser;
@@ -36,25 +49,98 @@ void scanDir(const std::string& pathStr)
     }
 }
 
+class OptionsFrame : public wxFrame
+{
+public:
+    OptionsFrame(Config& config)
+        : wxFrame(nullptr, wxID_ANY, "Options")
+    {
+        auto optionsPanel = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxDefaultSize);
+        auto optionsSizer = new wxGridSizer(2);
+        optionsPanel->SetSizer(optionsSizer);
+
+        auto logLevelLabel = new wxStaticText(optionsPanel, wxID_ANY, "Log Level");
+        optionsSizer->Add(logLevelLabel);
+
+        auto logLevel = new wxComboBox(
+            optionsPanel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0, 0, wxCB_READONLY);
+        for (int i = 0; i < spdlog::level::n_levels; ++i) {
+            logLevel->Append(fmt::to_string(
+                spdlog::level::to_string_view(static_cast<spdlog::level::level_enum>(spdlog::level::trace + i))));
+            if (config.LogLevel == i) {
+                logLevel->SetSelection(i);
+            }
+        }
+        optionsSizer->Add(logLevel);
+
+        auto useConsoleLabel = new wxStaticText(optionsPanel, wxID_ANY, "Use Console");
+        optionsSizer->Add(useConsoleLabel);
+
+        auto useConsole = new wxCheckBox(optionsPanel, wxID_ANY, "");
+        optionsSizer->Add(useConsole);
+        useConsole->SetValue(config.UseConsole);
+
+        auto buttonsPanel = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxDefaultSize);
+        auto buttonSizer = new wxBoxSizer(wxHORIZONTAL);
+        buttonsPanel->SetSizer(buttonSizer);
+
+        auto okButton = new wxButton(buttonsPanel, wxID_ANY, "Save");
+        okButton->Bind(wxEVT_BUTTON, [this, logLevel, useConsole, &config](wxCommandEvent&) {
+            config.LogLevel = spdlog::level::from_str(logLevel->GetString(logLevel->GetSelection()).ToStdString());
+            if (config.UseConsole && !useConsole->GetValue()) {
+                destroyConsole();
+            } else if (!config.UseConsole && useConsole->GetValue()) {
+                createConsole();
+            }
+            config.UseConsole = useConsole->GetValue();
+            config.Save("config.json");
+            spdlog::set_level(config.LogLevel);
+            spdlog::default_logger()->set_level(config.LogLevel);
+            for (auto& sink : spdlog::default_logger()->sinks()) {
+                sink->set_level(config.LogLevel);
+            }
+            Close();
+        });
+        buttonSizer->Add(okButton);
+
+        auto calcelButton = new wxButton(buttonsPanel, wxID_ANY, "Cancel");
+        calcelButton->Bind(wxEVT_BUTTON, [&](wxCommandEvent&) { Close(); });
+        buttonSizer->Add(calcelButton);
+
+        auto topSizer = new wxBoxSizer(wxVERTICAL);
+        topSizer->Add(optionsPanel);
+        topSizer->Add(buttonsPanel);
+
+        SetSizerAndFit(topSizer);
+    }
+
+private:
+};
+
 class MyFrame : public wxFrame
 {
 public:
-    enum { ID_ScanFolder = 1, ID_ScanFile };
+    enum { ID_ScanFolder = 1, ID_ScanFile, ID_Options };
 
-    MyFrame()
-        : wxFrame(NULL, wxID_ANY, "Cross Stitch Saga Parser")
+    explicit MyFrame(Config& config)
+        : wxFrame(nullptr, wxID_ANY, "Cross Stitch Saga Parser")
+        , config_(config)
     {
         auto menuBar = new wxMenuBar();
 
         auto menuFile = new wxMenu();
         menuFile->Append(ID_ScanFolder, "&Scan folder...\tCtrl-O", "Select a folder with .sp files to scan");
-        menuFile->Append(ID_ScanFile, "&Scan a single file...\tCtrl-O", "Select a single .sp files to scan");
+        menuFile->Append(ID_ScanFile, "&Scan a file...\tCtrl-F", "Select a single .sp files to scan");
         menuFile->AppendSeparator();
         menuFile->Append(wxID_EXIT);
+
+        auto menuTools = new wxMenu();
+        menuTools->Append(ID_Options, "&Options");
 
         auto menuHelp = new wxMenu();
         menuHelp->Append(wxID_ABOUT);
         menuBar->Append(menuFile, "&File");
+        menuBar->Append(menuTools, "&Tools");
         menuBar->Append(menuHelp, "&Help");
 
         SetMenuBar(menuBar);
@@ -108,6 +194,14 @@ public:
         Bind(
             wxEVT_MENU, [this](wxCommandEvent&) { Close(); }, wxID_EXIT);
 
+        Bind(
+            wxEVT_MENU,
+            [this](wxCommandEvent&) {
+                auto frame = new OptionsFrame(config_);
+                frame->Show(true);
+            },
+            ID_Options);
+
         auto panel = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL | wxRAISED_BORDER);
 
         auto panelSizer = new wxBoxSizer(wxVERTICAL);
@@ -136,6 +230,14 @@ public:
 
         auto icon = new wxIcon(wxIconLocation("saga_parser.exe", 0));
         SetIcon(*icon);
+
+        auto callback_sink =
+            std::make_shared<spdlog::sinks::callback_sink_mt>([this](const spdlog::details::log_msg& msg) {
+                stats_->AppendText(fmt::to_string(msg.payload));
+                stats_->AppendText("\n");
+            });
+        callback_sink->set_level(config_.LogLevel);
+        spdlog::default_logger()->sinks().push_back(callback_sink);
     }
 
 private:
@@ -157,7 +259,7 @@ private:
             auto yearId =
                 statsTree_->AppendItem(rootId, std::format("Year {}: {}", year.first, year.second.stat.numStitches));
             for (const auto& set : year.second.stat.sets) {
-                auto text = std::format("{}: {} ({:.2f}%)", set.first, set.second,
+                auto text = std::format(L"{}: {} ({:.2f}%)", set.first, set.second,
                     static_cast<float>(set.second) / static_cast<float>(year.second.stat.numStitches) * 100.0f);
                 statsTree_->AppendItem(yearId, text);
             }
@@ -167,7 +269,7 @@ private:
                     yearId, std::format("{}: {}", getMonthName(month.first), month.second.stat.numStitches));
                 for (const auto& set : month.second.stat.sets) {
                     statsTree_->AppendItem(
-                        monthId, std::format("{}: {} ({:.2f}%)", set.first, set.second,
+                        monthId, std::format(L"{}: {} ({:.2f}%)", set.first, set.second,
                                      static_cast<float>(set.second) /
                                          static_cast<float>(month.second.stat.numStitches) * 100.0f));
                 }
@@ -176,13 +278,14 @@ private:
         }
         statsTree_->Expand(rootId);
 
-        stats_->AppendText(std::format("Errors: {}\n", stats.errors.size()));
+        spdlog::info("Errors: {}", stats.errors.size());
         for (const auto& error : stats.errors) {
-            stats_->AppendText(std::format("{}\n", error));
+            stats_->AppendText(std::format(L"{}\n", error));
         }
     }
     wxTextCtrl* stats_;
     wxTreeCtrl* statsTree_;
+    Config& config_;
 };
 
 class MyApp : public wxApp
@@ -195,12 +298,10 @@ public:
             spdlog::warn("Failed to load config");
         }
         if (config_.UseConsole) {
-            AllocConsole();
-            FILE* stream = nullptr;
-            _wfreopen_s(&stream, L"CON", L"w", stdout);
+            createConsole();
         }
         spdlog::set_level(config_.LogLevel);
-        auto frame = new MyFrame();
+        auto frame = new MyFrame(config_);
         frame->Show(true);
         spdlog::info("Application started");
         return true;
@@ -209,7 +310,7 @@ public:
     int OnExit() override
     {
         if (config_.UseConsole) {
-            FreeConsole();
+            destroyConsole();
         }
         return 0;
     }

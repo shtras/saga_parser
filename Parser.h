@@ -14,7 +14,7 @@ public:
     const Stats& GetStats() const;
 
 private:
-    void processFileData(const std::vector<char>& v, const std::string& setName = "");
+    void processFileData(const std::vector<char>& v, const std::wstring& setName);
     void processFileLegacy(const std::vector<char>& v);
 
     Stats stats_;
