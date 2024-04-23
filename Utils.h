@@ -24,42 +24,9 @@ public:
     template <typename T>
     T get()
     {
-        throw std::runtime_error("Unimplemented");
-    }
-
-    template <>
-    long long get<long long>()
-    {
-        ensureEnough(sizeof(long long));
-        int res = *(long long*)(data_.data() + itr_);
-        skip(sizeof(long long));
-        return res;
-    }
-
-    template <>
-    int get<int>()
-    {
-        ensureEnough(sizeof(int));
-        int res = *(int*)(data_.data() + itr_);
-        skip(sizeof(int));
-        return res;
-    }
-
-    template <>
-    short get<short>()
-    {
-        ensureEnough(sizeof(short));
-        int res = *(short*)(data_.data() + itr_);
-        skip(sizeof(short));
-        return res;
-    }
-
-    template <>
-    char get<char>()
-    {
-        ensureEnough(1);
-        int res = data_[itr_];
-        skip(1);
+        ensureEnough(sizeof(T));
+        T res = *(T*)(data_.data() + itr_);
+        skip(sizeof(T));
         return res;
     }
 
@@ -70,16 +37,38 @@ private:
     size_t itr_ = 0;
 };
 
+struct StitchCount
+{
+    static std::array<std::string_view, 13> stitchNames;
+    static std::array<float, 13> crossMultiplier;
+    std::array<float, 13> stitches = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    float adjustedDecorative = 0;
+    int decorative = 0;
+    float total() const;
+    std::string totalStr() const;
+
+    StitchCount& operator+=(const StitchCount& other)
+    {
+        for (int i = 0; i < stitches.size(); ++i) {
+            stitches[i] += other.stitches[i];
+        }
+        adjustedDecorative += other.adjustedDecorative;
+        decorative += other.decorative;
+        return *this;
+    }
+};
+
 struct Stats
 {
     struct StatPeriod
     {
-        int numStitches = 0;
+        StitchCount stitches;
         std::map<std::wstring, int> sets;
     };
     struct Month
     {
         StatPeriod stat;
+        std::map<std::wstring, std::map<int, StatPeriod>> setByDay;
     };
     struct Year
     {
@@ -87,21 +76,7 @@ struct Stats
         StatPeriod stat;
     };
 
-    void Add(int year, int month, int numStitches, const std::wstring& setName)
-    {
-        if (numStitches == 0) {
-            return;
-        }
-        stat.numStitches += numStitches;
-        years[year].stat.numStitches += numStitches;
-        years[year].months[month].stat.numStitches += numStitches;
-
-        if (!setName.empty()) {
-            stat.sets[setName] += numStitches;
-            years[year].stat.sets[setName] += numStitches;
-            years[year].months[month].stat.sets[setName] += numStitches;
-        }
-    }
+    void Add(int year, int month, int day, const StitchCount& stitchCount, const std::wstring& setName);
 
     std::map<int, Year> years;
     StatPeriod stat;
@@ -114,6 +89,7 @@ struct Config
     void Save(const std::string& fileName);
     bool UseConsole = false;
     spdlog::level::level_enum LogLevel{spdlog::level::info};
+    int SkipAfter = 0;
 };
 
 

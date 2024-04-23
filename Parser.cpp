@@ -10,6 +10,9 @@
 #include <iostream>
 #include <chrono>
 #include <map>
+#include <array>
+#include <algorithm>
+#include <numeric>
 
 namespace SagaStats
 {
@@ -57,11 +60,21 @@ struct Date
         auto time1 = data.getString(data.get<short>());
         auto time2 = data.getString(data.get<short>());
         for (int i = 0; i < 11; ++i) {
-            numCrosses += -data.get<long long>();
+            stitches.stitches[i] = -data.get<long long>() * StitchCount::crossMultiplier[i];
         }
-        data.skip(8);
-        auto extraDateFields = data.get<int>();
-        data.skip(extraDateFields * 12);
+        auto backStitch = data.get<float>();
+        auto longStitch = data.get<float>();
+        stitches.stitches[11] = -backStitch * StitchCount::crossMultiplier[11];
+        stitches.stitches[12] = -longStitch * StitchCount::crossMultiplier[12];
+        auto numDecorative = data.get<int>();
+        for (int i = 0; i < numDecorative; ++i) {
+            auto coeff = data.get<float>();
+            auto numDec = data.get<long long>();
+            stitches.adjustedDecorative -= numDec * coeff;
+            stitches.decorative -= numDec;
+        }
+        //data.skip(extraDateFields * 12);
+
         std::istringstream iss(dateStr);
         iss >> std::chrono::parse(std::string{"%d.%m.%Y"}, date);
     }
@@ -69,12 +82,12 @@ struct Date
     std::string toString() const
     {
         std::stringstream ss;
-        ss << date << ": " << numCrosses;
+        ss << date << ": " << stitches.total();
         return ss.str();
     }
 
     std::chrono::year_month_day date;
-    int numCrosses = 0;
+    StitchCount stitches;
 };
 } // namespace
 
@@ -101,7 +114,6 @@ void Parser::ParseFile(const std::filesystem::path& path)
     try {
         fileName = path.filename().wstring();
     } catch (std::system_error& e) {
-        
     }
     try {
         processFileData(data, fileName);
@@ -172,8 +184,13 @@ void Parser::processFileData(const std::vector<char>& v, const std::wstring& set
         spdlog::debug("{}", date.toString());
         auto year = static_cast<int>(date.date.year());
         auto month = static_cast<unsigned int>(date.date.month());
-        auto numStitches = date.numCrosses;
-        stats_.Add(year, month, numStitches, setName);
+        auto day = static_cast<unsigned int>(date.date.day());
+        auto numStitches = date.stitches.total();
+        if (config_.SkipAfter > 0 && numStitches > config_.SkipAfter) {
+            spdlog::info(L"Skipping {}: {} for {}-{}-{}", setName, numStitches, year, month, day);
+            continue;
+        }
+        stats_.Add(year, month, day, date.stitches, setName);
     }
 }
 
@@ -265,8 +282,7 @@ void Parser::processFileLegacy(const std::vector<char>& v)
     int endOffset = startOffset + numCrosses * 5;
 
     int remainder = v.size() - endOffset;
-    spdlog::info("remainder: {} payload: {} start: {} end: {}", remainder, h->payloadOffset, startOffset,
-        endOffset);
+    spdlog::info("remainder: {} payload: {} start: {} end: {}", remainder, h->payloadOffset, startOffset, endOffset);
 
     /*
     * 132 per

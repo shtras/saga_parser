@@ -25,30 +25,6 @@ void destroyConsole()
     FreeConsole();
 }
 
-void scanDir(const std::string& pathStr)
-{
-    Parser parser;
-
-    fs::path dir(pathStr);
-    fs::directory_iterator itr(dir);
-    for (auto& e : itr) {
-        auto& path = e.path();
-        if (!fs::exists(path)) {
-            spdlog::error("File not found");
-            continue;
-        }
-        if (path.extension() != ".sp") {
-            continue;
-        }
-        try {
-            parser.ParseFile(path);
-        } catch (std::runtime_error& e) {
-            spdlog::error("Failed: {}", e.what());
-            continue;
-        }
-    }
-}
-
 class OptionsFrame : public wxFrame
 {
 public:
@@ -63,10 +39,13 @@ public:
         optionsSizer->Add(logLevelLabel);
 
         auto logLevel = new wxComboBox(
-            optionsPanel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0, 0, wxCB_READONLY);
+            optionsPanel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, 0, 0,
+            wxCB_READONLY
+        );
         for (int i = 0; i < spdlog::level::n_levels; ++i) {
-            logLevel->Append(fmt::to_string(
-                spdlog::level::to_string_view(static_cast<spdlog::level::level_enum>(spdlog::level::trace + i))));
+            logLevel->Append(fmt::to_string(spdlog::level::to_string_view(
+                static_cast<spdlog::level::level_enum>(spdlog::level::trace + i)
+            )));
             if (config.LogLevel == i) {
                 logLevel->SetSelection(i);
             }
@@ -80,27 +59,45 @@ public:
         optionsSizer->Add(useConsole);
         useConsole->SetValue(config.UseConsole);
 
+        auto skipAfterLabel =
+            new wxStaticText(optionsPanel, wxID_ANY, "Skip days with more than (0=disable)");
+        optionsSizer->Add(skipAfterLabel);
+
+        auto skipAfter = new wxTextCtrl(optionsPanel, wxID_ANY, std::to_string(config.SkipAfter));
+        optionsSizer->Add(skipAfter);
+
         auto buttonsPanel = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxDefaultSize);
         auto buttonSizer = new wxBoxSizer(wxHORIZONTAL);
         buttonsPanel->SetSizer(buttonSizer);
 
         auto okButton = new wxButton(buttonsPanel, wxID_ANY, "Save");
-        okButton->Bind(wxEVT_BUTTON, [this, logLevel, useConsole, &config](wxCommandEvent&) {
-            config.LogLevel = spdlog::level::from_str(logLevel->GetString(logLevel->GetSelection()).ToStdString());
-            if (config.UseConsole && !useConsole->GetValue()) {
-                destroyConsole();
-            } else if (!config.UseConsole && useConsole->GetValue()) {
-                createConsole();
+        okButton->Bind(
+            wxEVT_BUTTON,
+            [this, logLevel, useConsole, skipAfter, &config](wxCommandEvent&) {
+                config.LogLevel = spdlog::level::from_str(
+                    logLevel->GetString(logLevel->GetSelection()).ToStdString()
+                );
+                if (config.UseConsole && !useConsole->GetValue()) {
+                    destroyConsole();
+                } else if (!config.UseConsole && useConsole->GetValue()) {
+                    createConsole();
+                }
+                config.UseConsole = useConsole->GetValue();
+                auto skipAfterStr = skipAfter->GetLineText(0).ToStdString();
+                try {
+                    config.SkipAfter = std::stoi(skipAfterStr);
+                } catch (...) {
+                    spdlog::error("Failed to parse integer: {}", skipAfterStr);
+                }
+                config.Save("config.json");
+                spdlog::set_level(config.LogLevel);
+                spdlog::default_logger()->set_level(config.LogLevel);
+                for (auto& sink : spdlog::default_logger()->sinks()) {
+                    sink->set_level(config.LogLevel);
+                }
+                Close();
             }
-            config.UseConsole = useConsole->GetValue();
-            config.Save("config.json");
-            spdlog::set_level(config.LogLevel);
-            spdlog::default_logger()->set_level(config.LogLevel);
-            for (auto& sink : spdlog::default_logger()->sinks()) {
-                sink->set_level(config.LogLevel);
-            }
-            Close();
-        });
+        );
         buttonSizer->Add(okButton);
 
         auto calcelButton = new wxButton(buttonsPanel, wxID_ANY, "Cancel");
@@ -129,8 +126,12 @@ public:
         auto menuBar = new wxMenuBar();
 
         auto menuFile = new wxMenu();
-        menuFile->Append(ID_ScanFolder, "&Scan folder...\tCtrl-O", "Select a folder with .sp files to scan");
-        menuFile->Append(ID_ScanFile, "&Scan a file...\tCtrl-F", "Select a single .sp files to scan");
+        menuFile->Append(
+            ID_ScanFolder, "&Scan folder...\tCtrl-O", "Select a folder with .sp files to scan"
+        );
+        menuFile->Append(
+            ID_ScanFile, "&Scan a file...\tCtrl-F", "Select a single .sp files to scan"
+        );
         menuFile->AppendSeparator();
         menuFile->Append(wxID_EXIT);
 
@@ -149,38 +150,45 @@ public:
             wxEVT_MENU,
             [](wxCommandEvent&) {
                 wxMessageBox(
-                    "Cross Stitch Saga parser v1.0\nThat's all, folks!", "SagaParser", wxOK | wxICON_INFORMATION);
+                    "Cross Stitch Saga parser v1.0\nThat's all, folks!", "SagaParser",
+                    wxOK | wxICON_INFORMATION
+                );
             },
-            wxID_ABOUT);
+            wxID_ABOUT
+        );
 
         Bind(
             wxEVT_MENU,
             [this](wxCommandEvent&) {
                 wxDirDialog dirOpenDialog(
-                    this, _("Select folder to scan"), "", wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST);
+                    this, _("Select folder to scan"), "", wxDD_DEFAULT_STYLE | wxDD_DIR_MUST_EXIST
+                );
                 if (dirOpenDialog.ShowModal() == wxID_CANCEL) {
                     spdlog::debug("Cancel on select folder");
                     return;
                 }
                 SetStatusText("Scanning. Please wait...");
-                Parser parser;
+                Parser parser(config_);
                 parser.ParseDir(dirOpenDialog.GetPath().ToStdString());
                 fillStats(parser.GetStats());
                 SetStatusText("Scan completed.");
             },
-            ID_ScanFolder);
+            ID_ScanFolder
+        );
 
         Bind(
             wxEVT_MENU,
             [this](wxCommandEvent&) {
-                wxFileDialog fileOpenDialog(this, _("Open SP file"), "", "", "SP files (*.sp)|*.sp",
-                    wxFD_DEFAULT_STYLE | wxFD_FILE_MUST_EXIST | wxFD_MULTIPLE);
+                wxFileDialog fileOpenDialog(
+                    this, _("Open SP file"), "", "", "SP files (*.sp)|*.sp",
+                    wxFD_DEFAULT_STYLE | wxFD_FILE_MUST_EXIST | wxFD_MULTIPLE
+                );
                 if (fileOpenDialog.ShowModal() == wxID_CANCEL) {
                     spdlog::debug("Cancel on select file");
                     return;
                 }
                 SetStatusText("Scanning. Please wait...");
-                Parser parser;
+                Parser parser(config_);
                 wxArrayString paths;
                 fileOpenDialog.GetPaths(paths);
                 for (auto& path : paths) {
@@ -189,10 +197,12 @@ public:
                 fillStats(parser.GetStats());
                 SetStatusText("Scan completed.");
             },
-            ID_ScanFile);
+            ID_ScanFile
+        );
 
         Bind(
-            wxEVT_MENU, [this](wxCommandEvent&) { Close(); }, wxID_EXIT);
+            wxEVT_MENU, [this](wxCommandEvent&) { Close(); }, wxID_EXIT
+        );
 
         Bind(
             wxEVT_MENU,
@@ -200,9 +210,12 @@ public:
                 auto frame = new OptionsFrame(config_);
                 frame->Show(true);
             },
-            ID_Options);
+            ID_Options
+        );
 
-        auto panel = new wxPanel(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL | wxRAISED_BORDER);
+        auto panel = new wxPanel(
+            this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxTAB_TRAVERSAL | wxRAISED_BORDER
+        );
 
         auto panelSizer = new wxBoxSizer(wxVERTICAL);
         panel->SetSizer(panelSizer);
@@ -210,7 +223,9 @@ public:
         statsTree_ = new wxTreeCtrl(panel, wxID_ANY, wxDefaultPosition, {600, 600});
         panelSizer->Add(statsTree_, 1, wxEXPAND | wxSHRINK);
 
-        stats_ = new wxTextCtrl(panel, wxID_ANY, "", wxDefaultPosition, {600, 100}, wxTE_MULTILINE | wxTE_READONLY);
+        stats_ = new wxTextCtrl(
+            panel, wxID_ANY, "", wxDefaultPosition, {600, 100}, wxTE_MULTILINE | wxTE_READONLY
+        );
         panelSizer->Add(stats_, 0, wxEXPAND | wxSHRINK);
 
         auto clearBtn = new wxButton(panel, wxID_ANY, "Clear", wxDefaultPosition, {600, 30});
@@ -231,11 +246,12 @@ public:
         auto icon = new wxIcon(wxIconLocation("saga_parser.exe", 0));
         SetIcon(*icon);
 
-        auto callback_sink =
-            std::make_shared<spdlog::sinks::callback_sink_mt>([this](const spdlog::details::log_msg& msg) {
+        auto callback_sink = std::make_shared<spdlog::sinks::callback_sink_mt>(
+            [this](const spdlog::details::log_msg& msg) {
                 stats_->AppendText(fmt::to_string(msg.payload));
                 stats_->AppendText("\n");
-            });
+            }
+        );
         callback_sink->set_level(config_.LogLevel);
         spdlog::default_logger()->sinks().push_back(callback_sink);
     }
@@ -246,32 +262,88 @@ private:
         if (num < 1 || num > 12) {
             return "Unknown";
         }
-        std::array<std::string_view, 12> months = {
-            "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+        std::array<std::string_view, 12> months = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
         return months[num - 1];
+    }
+
+    std::string formatStr(float f) const
+    {
+        std::stringstream ss;
+        if (static_cast<int>(f) == f) {
+            ss << f;
+        } else {
+            ss << std::fixed << std::setprecision(1) << f;
+        }
+        return ss.str();
     }
 
     void fillStats(const Stats& stats)
     {
         statsTree_->DeleteAllItems();
-        auto rootId = statsTree_->AddRoot(std::format("Total: {}", stats.stat.numStitches));
+        auto rootId = statsTree_->AddRoot(std::format("Total: {}", stats.stat.stitches.totalStr()));
         for (const auto& year : stats.years) {
-            auto yearId =
-                statsTree_->AppendItem(rootId, std::format("Year {}: {}", year.first, year.second.stat.numStitches));
+            auto yearId = statsTree_->AppendItem(
+                rootId, std::format("Year {}: {}", year.first, year.second.stat.stitches.totalStr())
+            );
             for (const auto& set : year.second.stat.sets) {
-                auto text = std::format(L"{}: {} ({:.2f}%)", set.first, set.second,
-                    static_cast<float>(set.second) / static_cast<float>(year.second.stat.numStitches) * 100.0f);
+                auto text = std::format(
+                    L"{}: {} ({:.2f}%)", set.first, set.second,
+                    static_cast<float>(set.second) /
+                        static_cast<float>(year.second.stat.stitches.total()) * 100.0f
+                );
                 statsTree_->AppendItem(yearId, text);
             }
 
             for (const auto& month : year.second.months) {
                 auto monthId = statsTree_->AppendItem(
-                    yearId, std::format("{}: {}", getMonthName(month.first), month.second.stat.numStitches));
+                    yearId,
+                    std::format(
+                        "{}: {}", getMonthName(month.first), month.second.stat.stitches.totalStr()
+                    )
+                );
                 for (const auto& set : month.second.stat.sets) {
-                    statsTree_->AppendItem(
-                        monthId, std::format(L"{}: {} ({:.2f}%)", set.first, set.second,
-                                     static_cast<float>(set.second) /
-                                         static_cast<float>(month.second.stat.numStitches) * 100.0f));
+                    auto setId = statsTree_->AppendItem(
+                        monthId,
+                        std::format(
+                            L"{}: {} ({:.2f}%)", set.first, set.second,
+                            static_cast<float>(set.second) /
+                                static_cast<float>(month.second.stat.stitches.total()) * 100.0f
+                        )
+                    );
+                    if (month.second.setByDay.count(set.first) == 0) {
+                        stats_->AppendText(
+                            std::format(L"Could not find by day entries for {}", set.first)
+                        );
+                        continue;
+                    }
+                    for (const auto& setDay : month.second.setByDay.at(set.first)) {
+                        auto dayId = statsTree_->AppendItem(
+                            setId,
+                            std::format("{} : {}", setDay.first, setDay.second.stitches.totalStr())
+                        );
+                        for (int i = 0; i < setDay.second.stitches.stitches.size(); ++i) {
+                            if (setDay.second.stitches.stitches[i] == 0) {
+                                continue;
+                            }
+                            statsTree_->AppendItem(
+                                dayId, std::format(
+                                           "{}: {}", StitchCount::stitchNames[i],
+                                           formatStr(
+                                               setDay.second.stitches.stitches[i] /
+                                               StitchCount::crossMultiplier[i]
+                                           )
+
+                                       )
+                            );
+                        }
+                        if (setDay.second.stitches.decorative > 0) {
+                            statsTree_->AppendItem(
+                                dayId,
+                                std::format("Decorative: {}", setDay.second.stitches.decorative)
+                            );
+                        }
+                    }
                 }
             }
             statsTree_->Expand(yearId);

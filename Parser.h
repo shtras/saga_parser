@@ -8,6 +8,10 @@ namespace SagaStats
 class Parser
 {
 public:
+    explicit Parser(const Config& config)
+        : config_(config)
+    {
+    }
     void ParseFile(const std::filesystem::path& pathStr);
     void ParseDir(const std::filesystem::path& pathStr);
 
@@ -18,5 +22,6 @@ private:
     void processFileLegacy(const std::vector<char>& v);
 
     Stats stats_;
+    const Config& config_;
 };
 } // namespace SagaStats

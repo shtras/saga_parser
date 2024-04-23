@@ -19,7 +19,9 @@ find_package(wxWidgets CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 
 add_executable (saga_parser WIN32 main.cpp Parser.cpp Utils.cpp saga_parser.rc)
-target_link_libraries(saga_parser PUBLIC saga_parser_compiler_flags spdlog::spdlog nlohmann_json::nlohmann_json wx::core wx::base)
+target_link_libraries(saga_parser PUBLIC saga_parser_compiler_flags spdlog::spdlog_header_only nlohmann_json::nlohmann_json wx::core wx::base)
+target_compile_definitions(saga_parser PRIVATE SPDLOG_WCHAR_TO_UTF8_SUPPORT)
+#target_compile_definitions(saga_parser PRIVATE SPDLOG_FMT_EXTERNAL)
 
 file(COPY config.json DESTINATION .)
 
