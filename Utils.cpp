@@ -14,7 +14,7 @@ std::array<std::string_view, 13> StitchCount::stitchNames = {
     "Long stitch"
 };
 
-std::array<float, 13> StitchCount::crossMultiplier = {1.f, 0.5f, 1.f, 0.25f, 1.f,  1.f, 1.f,
+std::array<float, 13> StitchCount::crossMultiplier = {1.f, 0.5f, 1.f, 0.25f, 1.f,  0.5f, 1.f,
                                                       1.f, 1.f,  1.f, 1.f,   0.5f, 0.5f};
 
 float StitchCount::total() const
