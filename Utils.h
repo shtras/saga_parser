@@ -63,7 +63,7 @@ struct Stats
     struct StatPeriod
     {
         StitchCount stitches;
-        std::map<std::wstring, int> sets;
+        std::map<std::wstring, float> sets;
     };
     struct Month
     {

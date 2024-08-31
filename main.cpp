@@ -267,6 +267,17 @@ private:
         return months[num - 1];
     }
 
+    std::wstring formatWStr(float f) const
+    {
+        std::wstringstream ss;
+        if (static_cast<int>(f) == f) {
+            ss << f;
+        } else {
+            ss << std::fixed << std::setprecision(1) << f;
+        }
+        return ss.str();
+    }
+
     std::string formatStr(float f) const
     {
         std::stringstream ss;
@@ -288,9 +299,8 @@ private:
             );
             for (const auto& set : year.second.stat.sets) {
                 auto text = std::format(
-                    L"{}: {} ({:.2f}%)", set.first, set.second,
-                    static_cast<float>(set.second) /
-                        static_cast<float>(year.second.stat.stitches.total()) * 100.0f
+                    L"{}: {} ({:.2f}%)", set.first, formatWStr(set.second),
+                    set.second / static_cast<float>(year.second.stat.stitches.total()) * 100.0f
                 );
                 statsTree_->AppendItem(yearId, text);
             }
@@ -306,9 +316,9 @@ private:
                     auto setId = statsTree_->AppendItem(
                         monthId,
                         std::format(
-                            L"{}: {} ({:.2f}%)", set.first, set.second,
-                            static_cast<float>(set.second) /
-                                static_cast<float>(month.second.stat.stitches.total()) * 100.0f
+                            L"{}: {} ({:.2f}%)", set.first, formatWStr(set.second),
+                            set.second / static_cast<float>(month.second.stat.stitches.total()) *
+                                100.0f
                         )
                     );
                     if (month.second.setByDay.count(set.first) == 0) {
