@@ -267,20 +267,12 @@ private:
         return months[num - 1];
     }
 
-    std::wstring formatWStr(float f) const
+    template <typename S>
+    S formatStr(float f) const
     {
-        std::wstringstream ss;
-        if (static_cast<int>(f) == f) {
-            ss << f;
-        } else {
-            ss << std::fixed << std::setprecision(1) << f;
-        }
-        return ss.str();
-    }
-
-    std::string formatStr(float f) const
-    {
-        std::stringstream ss;
+        using SS = typename std::conditional<
+            std::is_same<S, std::string>::value, std::stringstream, std::wstringstream>::type;
+        SS ss;
         if (static_cast<int>(f) == f) {
             ss << f;
         } else {
@@ -299,7 +291,7 @@ private:
             );
             for (const auto& set : year.second.stat.sets) {
                 auto text = std::format(
-                    L"{}: {} ({:.2f}%)", set.first, formatWStr(set.second),
+                    L"{}: {} ({:.2f}%)", set.first, formatStr<std::wstring>(set.second),
                     set.second / static_cast<float>(year.second.stat.stitches.total()) * 100.0f
                 );
                 statsTree_->AppendItem(yearId, text);
@@ -316,7 +308,7 @@ private:
                     auto setId = statsTree_->AppendItem(
                         monthId,
                         std::format(
-                            L"{}: {} ({:.2f}%)", set.first, formatWStr(set.second),
+                            L"{}: {} ({:.2f}%)", set.first, formatStr<std::wstring>(set.second),
                             set.second / static_cast<float>(month.second.stat.stitches.total()) *
                                 100.0f
                         )
@@ -339,7 +331,7 @@ private:
                             statsTree_->AppendItem(
                                 dayId, std::format(
                                            "{}: {}", StitchCount::stitchNames[i],
-                                           formatStr(
+                                           formatStr<std::string>(
                                                setDay.second.stitches.stitches[i] /
                                                StitchCount::crossMultiplier[i]
                                            )
