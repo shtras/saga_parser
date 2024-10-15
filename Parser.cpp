@@ -191,6 +191,7 @@ void Parser::processFileData(const std::vector<char>& v, const std::wstring& set
             continue;
         }
         stats_.Add(year, month, day, date.stitches, setName);
+        setStats_[setName].Add(year, month, day, date.stitches, setName);
     }
 }
 

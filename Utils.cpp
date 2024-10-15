@@ -22,18 +22,6 @@ float StitchCount::total() const
     return std::accumulate(stitches.cbegin(), stitches.cend(), 0.f) + adjustedDecorative;
 }
 
-std::string StitchCount::totalStr() const
-{
-    std::stringstream ss;
-    auto t = total();
-    if (static_cast<int>(t) == t) {
-        ss << t;
-    } else {
-        ss << std::fixed << std::setprecision(1) << t;
-    }
-    return ss.str();
-}
-
 Data::Data(const std::vector<char>& data)
     : data_(data)
 {

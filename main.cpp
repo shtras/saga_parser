@@ -170,7 +170,7 @@ public:
                 SetStatusText("Scanning. Please wait...");
                 Parser parser(config_);
                 parser.ParseDir(dirOpenDialog.GetPath().ToStdString());
-                fillStats(parser.GetStats());
+                fillStats(parser);
                 SetStatusText("Scan completed.");
             },
             ID_ScanFolder
@@ -194,7 +194,7 @@ public:
                 for (auto& path : paths) {
                     parser.ParseFile(path.ToStdWstring());
                 }
-                fillStats(parser.GetStats());
+                fillStats(parser);
                 SetStatusText("Scan completed.");
             },
             ID_ScanFile
@@ -281,20 +281,21 @@ private:
         return ss.str();
     }
 
-    void fillStats(const Stats& stats)
+    void fillStatsSubtree(wxTreeItemId rootId, const Stats& stats, bool bySet)
     {
-        statsTree_->DeleteAllItems();
-        auto rootId = statsTree_->AddRoot(std::format("Total: {}", stats.stat.stitches.totalStr()));
         for (const auto& year : stats.years) {
             auto yearId = statsTree_->AppendItem(
-                rootId, std::format("Year {}: {}", year.first, year.second.stat.stitches.totalStr())
+                rootId,
+                std::format("Year {}: {}", year.first, year.second.stat.stitches.totalStr())
             );
-            for (const auto& set : year.second.stat.sets) {
-                auto text = std::format(
-                    L"{}: {} ({:.2f}%)", set.first, formatStr<std::wstring>(set.second),
-                    set.second / static_cast<float>(year.second.stat.stitches.total()) * 100.0f
-                );
-                statsTree_->AppendItem(yearId, text);
+            if (bySet) {
+                for (const auto& set : year.second.stat.sets) {
+                    auto text = std::format(
+                        L"{}: {} ({:.2f}%)", set.first, formatStr<std::wstring>(set.second),
+                        set.second / static_cast<float>(year.second.stat.stitches.total()) * 100.0f
+                    );
+                    statsTree_->AppendItem(yearId, text);
+                }
             }
 
             for (const auto& month : year.second.months) {
@@ -304,15 +305,23 @@ private:
                         "{}: {}", getMonthName(month.first), month.second.stat.stitches.totalStr()
                     )
                 );
+                if (!bySet) {
+                    assert(month.second.stat.sets.size() == 1);
+                }
                 for (const auto& set : month.second.stat.sets) {
-                    auto setId = statsTree_->AppendItem(
-                        monthId,
-                        std::format(
-                            L"{}: {} ({:.2f}%)", set.first, formatStr<std::wstring>(set.second),
-                            set.second / static_cast<float>(month.second.stat.stitches.total()) *
-                                100.0f
-                        )
-                    );
+                    wxTreeItemId setId;
+                    if (bySet) {
+                        setId = statsTree_->AppendItem(
+                            monthId,
+                            std::format(
+                                L"{}: {} ({:.2f}%)", set.first, formatStr<std::wstring>(set.second),
+                                set.second /
+                                    static_cast<float>(month.second.stat.stitches.total()) * 100.0f
+                            )
+                        );
+                    } else {
+                        setId = monthId;
+                    }
                     if (month.second.setByDay.count(set.first) == 0) {
                         stats_->AppendText(
                             std::format(L"Could not find by day entries for {}", set.first)
@@ -350,6 +359,28 @@ private:
             }
             statsTree_->Expand(yearId);
         }
+    }
+
+    void fillStats(const Parser& parser)
+    {
+        const auto& stats = parser.GetStats();
+        statsTree_->DeleteAllItems();
+        auto rootId = statsTree_->AddRoot("Statistics");
+
+        auto globalTreeId = statsTree_->AppendItem(
+            rootId, std::format("Total: {}", stats.stat.stitches.totalStr())
+        );
+
+        fillStatsSubtree(globalTreeId, stats, true);
+
+        auto bySetId = statsTree_->AppendItem(rootId, "By design");
+
+        for (const auto& [setName, setStats] : parser.GetSetStats()) {
+            auto setId =
+                statsTree_->AppendItem(bySetId, std::format(L"{}: {}", setName, setStats.stat.stitches.totalStr<std::wstring>())
+            );
+            fillStatsSubtree(setId, setStats, false);
+        }        
         statsTree_->Expand(rootId);
 
         spdlog::info("Errors: {}", stats.errors.size());

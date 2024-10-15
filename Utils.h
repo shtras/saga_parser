@@ -45,7 +45,21 @@ struct StitchCount
     float adjustedDecorative = 0;
     int decorative = 0;
     float total() const;
-    std::string totalStr() const;
+
+    template <typename S = std::string>
+    S totalStr() const
+    {
+        using SS = typename std::conditional<
+            std::is_same<S, std::string>::value, std::stringstream, std::wstringstream>::type;
+        SS ss;
+        auto t = total();
+        if (static_cast<int>(t) == t) {
+            ss << t;
+        } else {
+            ss << std::fixed << std::setprecision(1) << t;
+        }
+        return ss.str();
+    }
 
     StitchCount& operator+=(const StitchCount& other)
     {
